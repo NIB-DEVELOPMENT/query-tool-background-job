@@ -1,0 +1,6 @@
+from enum import Enum
+
+class ITRoles(Enum):
+    NON_SUPERVISIOR = "NON SUPERVISOR IT"
+    SUPERVISOR = "SUPERVISOR IT"
+    SECURITY_MANAGER = "SECURITY MANAGER IT"

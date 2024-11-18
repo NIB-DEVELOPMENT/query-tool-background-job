@@ -1,0 +1,1 @@
+ALTER USER {{db_schema}} PROFILE ADMIN_PROFILE
