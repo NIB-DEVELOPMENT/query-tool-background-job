@@ -12,5 +12,4 @@ class QueryQueueConnection:
     )
     connection = pika.BlockingConnection(parameters=connection_params)
     channel = connection.channel()
-    channel.queue_declare(queue="NIB QUEUE EXCHANGE")
     print(" [x] Sent 'Hello World!'")
