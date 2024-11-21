@@ -148,12 +148,16 @@ class QueryService:
         query = self.sql_reader.getSQL(scriptPath=query_dto.file_path)
         return self.query_repo.get_query_results(query=query, execute_dto=execute_dto)
 
-    def to_execute_query_dto(self, query_params: dict) -> ExecuteQueryDTO:
+    def to_execute_query_dto(self, query: dict) -> ExecuteQueryDTO:
         execute_query_dto = ExecuteQueryDTO(
-            query_id=query_params["query_id"],
-            page=query_params["page"],
-            per_page=query_params["per_page"],
-            query_params=query_params["query_params"],
+            first_name=query["first_name"],
+            query_id=query["id"],
+            name=query["name"],
+            user_id=query["user_id"],
+            file_path=query["file_path"],
+            query_params=query["query_params"],
+            email=query["email_address"],
+            department=query["department"],
         )
         return execute_query_dto
 
@@ -170,3 +174,12 @@ class QueryService:
             user_roles=user_roles, page=page, per_page=per_page
         )
         return queries, total
+    
+    def execute_query_from_rabbitmq(self, query: ExecuteQueryDTO) -> list:
+        if not os.path.isfile(query.file_path):
+            raise BadRequest(QueryException.QUERY_FILE_NOT_AVAILABLE.value)
+        valid_query = self.sql_reader.getSQL(scriptPath=query.file_path)
+        return self.query_repo.execute_query(query=valid_query, execute_dto=query)
+    
+    def callback(ch, method, properties, body):
+        print(f" [x] Received {body}")

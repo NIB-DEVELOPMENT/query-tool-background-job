@@ -1,25 +1,6 @@
-from src.database.baseModel import db, BaseModel
+from sqlalchemy import *
+from src import engine, base
 
-class QueryTable(BaseModel):
-    id = db.Column(
-        db.Integer, db.Sequence('query_id_seq'), primary_key=True
-        )
-    name = db.Column(
-        db.String(70),
-        nullable=False,
-        unique=False,
-    )
-    file_path = db.Column(
-        db.String(250),
-        nullable=False,
-        unique=True
-    )
-    department = db.Column(
-        db.String(250),
-        nullable=False,
-        unique=True
-    )
-    query_role = db.relationship(
-        "QueryRoleTable",
-        back_populates="queries"
-    )
+class QueryTable(base):
+    __tablename__ = 'query_table'
+    __table_args__ = ({'schema': 'nib_query_tool_ls_1', 'autoload_with': engine, "extend_existing" : True})
