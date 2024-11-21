@@ -1,17 +1,18 @@
 from dataclasses import dataclass
-from src.nib_user.nib_user_model import NIBUser, db
+from src.nib_user.nib_user_model import NIBUser
 from src.nib_user.dto.nib_user_dto import NIBUserDTO
 from src.database.SQLReader import SQLReader
 import os
 from typing import List
 from sqlalchemy.sql import text
+from src import Session
 
 # from sqlalchemy import CursorResult
 
 
 @dataclass
 class NIBUserRepo(SQLReader):
-    db = db
+    db = Session
     scriptPath = os.path.dirname(__file__) + os.sep + "scripts"
 
     def find_by_user_id(self, user_id: int) -> NIBUserDTO:
@@ -24,7 +25,7 @@ class NIBUserRepo(SQLReader):
         local_office = None
         sqlFilePath = self.scriptPath + os.sep + "get_local_office.sql"
         script = self.getSQL(sqlFilePath)
-        results = self.db.session.execute(text(script), {"user_id": user_id})
+        results = self.db.execute(text(script), {"user_id": user_id})
         for result in results.mappings():
             local_office = result["local_office"]
         return local_office
@@ -33,7 +34,7 @@ class NIBUserRepo(SQLReader):
         nib_number = None
         sqlFilePath = self.scriptPath + os.sep + "get_nib_number.sql"
         script = self.getSQL(sqlFilePath)
-        results = self.db.session.execute(text(script), {"user_id": user_id}).mappings()
+        results = self.db.execute(text(script), {"user_id": user_id}).mappings()
         for result in results:
             nib_number = result["alt_identifier"]
         return nib_number
@@ -42,7 +43,7 @@ class NIBUserRepo(SQLReader):
         role_result = None
         sqlFilePath = self.scriptPath + os.sep + "get_role.sql"
         script = self.getSQL(sqlFilePath)
-        results = self.db.session.execute(text(script), {"role": role})
+        results = self.db.execute(text(script), {"role": role})
         for result in results.mappings():
             role_result = result["display_name"]
         return role_result
@@ -50,7 +51,7 @@ class NIBUserRepo(SQLReader):
     def get_user_roles(self, user_id: int) -> List[str]:
         sqlFilePath = self.scriptPath + os.sep + "get_user_roles.sql"
         script = self.getSQL(sqlFilePath)
-        results = self.db.session.execute(text(script), {"user_id": user_id})
+        results = self.db.execute(text(script), {"user_id": user_id})
         return [result["display_name"] for result in results.mappings()]
 
     def _find_by_user_id(self, user_id: int) -> NIBUser:

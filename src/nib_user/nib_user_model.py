@@ -1,6 +1,7 @@
-from src.database.baseModel import db
+from sqlalchemy import *
+from src import engine, base
 
-class NIBUser(db.Model):
+class NIBUser(base):
     __tablename__ = 'nib_users'
-    __table_args__ = ({'schema': 'nib_admin_auth','autoload_with': db.engine, "extend_existing" : True})
+    __table_args__ = ({'schema': 'nib_admin_auth','autoload_with': engine, "extend_existing" : True})
     
