@@ -23,16 +23,16 @@ if __name__ == '__main__':
         query_dto=QueryService().to_execute_query_dto(query=query)
         results = QueryService().execute_query_from_rabbitmq(query=query_dto)
         save_path = DocumentSaveService().save_to_csv(results=results, query=query_dto)
-        data = ReportDeliveryDTO(first_name=query_dto.first_name, query_name=query_dto.name, file_path=save_path)
+        data = ReportDeliveryDTO(first_name=query_dto.first_name, query_name=query_dto.name, link=save_path)
         email_recipient = RecipientDTO(email_address=query_dto.email, data=data)
         query_report_confirmation = query_report_delivered()
         query_report_confirmation.send(recipients=[email_recipient])
+        ch.basic_ack(delivery_tag=method.delivery_tag)
         
-        
+    QueryQueueConnection().channel.basic_qos(prefetch_count=1)   
     QueryQueueConnection().channel.basic_consume(
         queue=Queue.QUERY_REPORT_QUEUE, 
-        on_message_callback=callback, 
-        auto_ack=True
+        on_message_callback=callback,
     )
     print(' [*] Waiting for messages. To exit press CTRL+C')
     QueryQueueConnection().channel.start_consuming()

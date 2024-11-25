@@ -11,7 +11,7 @@ class query_report_delivered(EmailService):
     email_from = "alerts@nib-bahamas.com"
     email_to = []
     subject = "NIB Query Tool: Query Report Download"
-    template_id = NIBEmailService.template_ids["query_report_delivered.html"]
+    template_id = NIBEmailService.template_ids["query_report_download.html"]
 
     def __init__(self) -> None:
         super().__init__()
