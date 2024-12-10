@@ -31,13 +31,12 @@ if __name__ == '__main__':
         query_report_confirmation.send(recipients=[email_recipient])
         ch.basic_ack(delivery_tag=method.delivery_tag)
 
-        # Publish a delayed message to the cleanup queue
         cleanup_message = json.dumps({'save_path': save_path})
         channel.basic_publish(
             exchange='NIB QUEUE EXCHANGE',
             routing_key='Query Report Cleanup Queue',
             body=cleanup_message,
-            properties=pika.BasicProperties(headers={'x-delay': 60000})  # Delay in milliseconds (e.g., 60000ms = 1 minute)
+            properties=pika.BasicProperties(headers={'x-delay': 60000})
         )
 
     channel.basic_qos(prefetch_count=1)

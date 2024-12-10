@@ -13,7 +13,7 @@ pipeline {
     stages {
         stage('Rebuild Background Image'){
             steps {
-                    sh 'docker build -t nibitdev/query-tool-backend:delay .'
+                    sh 'docker build -t nibitdev/query-tool-background-job:delay .'
                 }
             }
         stage('Login to DockerHub'){
@@ -23,7 +23,7 @@ pipeline {
         }
         stage('Push Background Job Image'){
             steps {
-                sh 'docker push nibitdev/query-tool-backend:delay'
+                sh 'docker push nibitdev/query-tool-background-job:delay'
             }
         }
         }
