@@ -33,10 +33,10 @@ if __name__ == '__main__':
 
         cleanup_message = json.dumps({'save_path': save_path})
         channel.basic_publish(
-            exchange='NIB QUEUE EXCHANGE',
-            routing_key='Query Report Cleanup Queue',
+            exchange=Queue.NIB_QUEUE_EXCHANGE,
+            routing_key=Queue.QUERY_REPORT_CLEANUP_QUEUE,
             body=cleanup_message,
-            properties=pika.BasicProperties(headers={'x-delay': 48 * 60 * 60 * 1000})
+            properties=pika.BasicProperties(headers={'x-delay': Queue.DELAY_RATE})
         )
 
     channel.basic_qos(prefetch_count=1)
