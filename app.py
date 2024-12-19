@@ -36,7 +36,7 @@ if __name__ == '__main__':
             exchange='NIB QUEUE EXCHANGE',
             routing_key='Query Report Cleanup Queue',
             body=cleanup_message,
-            properties=pika.BasicProperties(headers={'x-delay': 60000})
+            properties=pika.BasicProperties(headers={'x-delay': 48 * 60 * 60 * 1000})
         )
 
     channel.basic_qos(prefetch_count=1)
