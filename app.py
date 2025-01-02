@@ -44,5 +44,6 @@ if __name__ == '__main__':
         queue=Queue.QUERY_REPORT_QUEUE,
         on_message_callback=callback,
     )
+    print(f"Generated link: {callback.data.link}")
     print(' [*] Waiting for messages. To exit press CTRL+C')
     channel.start_consuming()
