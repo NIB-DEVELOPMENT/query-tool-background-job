@@ -26,6 +26,9 @@ if __name__ == '__main__':
         results = QueryService().execute_query_from_rabbitmq(query=query_dto)
         save_path = DocumentSaveService().save_to_csv(results=results, query=query_dto)
         data = ReportDeliveryDTO(first_name=query_dto.first_name, query_name=query_dto.name, link=os.path.join(Queue.address, save_path))
+
+        print(f"Generated link: {data.link}")
+        
         email_recipient = RecipientDTO(email_address=query_dto.email, data=data)
         query_report_confirmation = query_report_delivered()
         query_report_confirmation.send(recipients=[email_recipient])
@@ -44,6 +47,5 @@ if __name__ == '__main__':
         queue=Queue.QUERY_REPORT_QUEUE,
         on_message_callback=callback,
     )
-    print(f"Generated link: {callback.data.link}")
     print(' [*] Waiting for messages. To exit press CTRL+C')
     channel.start_consuming()
