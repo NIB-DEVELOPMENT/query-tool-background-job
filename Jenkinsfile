@@ -26,7 +26,6 @@ pipeline {
                 sh 'docker push nibitdev/query-tool-background-job:staging'
             }
         }
-        }
          stage('Remove Old Query Tool Background Job Containers'){
             steps {
                 script {
@@ -52,6 +51,7 @@ pipeline {
                     """)
                 }
             }
+    }
         post {
             always {
                 sh 'docker logout'
