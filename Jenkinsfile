@@ -27,6 +27,31 @@ pipeline {
             }
         }
         }
+         stage('Remove Old Query Tool Background Job Containers'){
+            steps {
+                script {
+                    remote.user = env.DEV_CREDS_USR 
+                    remote.password = env.DEV_CREDS_PSW
+                }
+                sshCommand (remote: remote, command: """
+                    cd ~/projects/deploy-query-tool
+                    echo '${env.DEV_CREDS_PSW}' | sudo -S docker compose stop background-job
+                    echo '${env.DEV_CREDS_PSW}' | sudo -S docker compose rm -f background-job
+                    """)
+                }
+            }
+        stage('Deploy New Query Tool Background Job Containers'){
+            steps{
+                script {
+                    remote.user = env.DEV_CREDS_USR 
+                    remote.password = env.DEV_CREDS_PSW
+                }
+                sshCommand (remote: remote, command: """
+                    cd ~/projects/deploy-query-tool
+                    echo '${env.DEV_CREDS_PSW}' | sudo -S docker compose up -d
+                    """)
+                }
+            }
         post {
             always {
                 sh 'docker logout'
