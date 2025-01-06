@@ -6,7 +6,8 @@ from src.queries.dto.execute_query_dto import ExecuteQueryDTO
 class DocumentSaveService:
     base_path = FileRepo.base_drive
     def save_to_csv(self, results, query:ExecuteQueryDTO):
-        file_path = os.path.join(self.base_path,'query_results',str(query.user_id), str(query.query_id), f"{query.user_id}-{(query.name).replace(" ", "")}.csv")
+        query_name = query.name.replace(" ", "")
+        file_path = os.path.join(self.base_path,'query_results',str(query.user_id), str(query.query_id), f"{query.user_id}-{query_name}.csv")
         try:
             if os.path.exists(file_path):
                 os.remove(file_path)
