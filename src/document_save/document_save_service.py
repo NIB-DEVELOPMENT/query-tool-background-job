@@ -1,6 +1,6 @@
 import csv
 import os
-from config import FileRepo
+from config import FileRepo, QueryToolBackend
 from src.queries.dto.execute_query_dto import ExecuteQueryDTO
 
 class DocumentSaveService:
@@ -18,3 +18,7 @@ class DocumentSaveService:
         except Exception as e:
             print(e)
         return file_path
+    
+    def get_download_path(self, save_path: str):
+        download_path =  QueryToolBackend().service_url + QueryToolBackend().route + save_path
+        return download_path
