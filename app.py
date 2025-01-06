@@ -24,7 +24,7 @@ if __name__ == '__main__':
         print(query)
         query_dto = QueryService().to_execute_query_dto(query=query)
         results = QueryService().execute_query_from_rabbitmq(query=query_dto)
-        save_path = DocumentSaveService().save_to_csv(results=results, query=query_dto)
+        save_path = (DocumentSaveService().save_to_csv(results=results, query=query_dto)).replace(" ", "")
         download_path = DocumentSaveService().get_download_path(save_path=save_path)
         data = ReportDeliveryDTO(first_name=query_dto.first_name, query_name=query_dto.name, link=download_path)
         email_recipient = RecipientDTO(email_address=query_dto.email, data=data)
