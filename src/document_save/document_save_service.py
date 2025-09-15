@@ -15,6 +15,7 @@ class DocumentSaveService:
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             with open(file_path, 'w', newline='') as file:
                 writer = csv.writer(file)
+                writer.writerow(results.column_names)
                 writer.writerows(results.rows)
         except Exception as e:
             print(e)
