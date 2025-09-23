@@ -87,7 +87,7 @@ class QueryService:
     def validate_query_doesnt_exists(self, query_id: int) -> bool:
         query = self.query_repo._get_query(query_id=query_id)
         if not query:
-            raise BadRequest(QueryException.QUERY_ALREADY_EXIST.value)
+            raise BadRequest(QueryException.QUERY_DOESNT_EXIST.value)
         return True
 
     def validate_query_exists(self, query_id: int) -> bool:
@@ -181,5 +181,3 @@ class QueryService:
         valid_query = self.sql_reader.getSQL(scriptPath=query.file_path)
         return self.query_repo.execute_query(query=valid_query, execute_dto=query)
     
-    def callback(ch, method, properties, body):
-        print(f" [x] Received {body}")

@@ -39,7 +39,7 @@ class NIBUserService:
             raise BadRequest(NIBUserExceptions.ROLE_DOESNT_EXIST.value)
         return True
     
-    def validate_user_exist(self, user_id: id) -> bool:
+    def validate_user_exist(self, user_id: int) -> bool:
       if not self.nib_user_repo._find_by_user_id(user_id=user_id):
           raise BadRequest(NIBUserExceptions.USER_DOESNT_EXIST.value)
       return True
