@@ -1,0 +1,7 @@
+from enum import Enum
+
+class FamilyIslandRoles(Enum):
+    NON_SUPERVISIOR = "NON SUPERVISOR  FIU"
+    SUPERVISOR = "SUPERVISOR FIU"
+    MANAGER = "MANAGER FIU"
+    SUB_OFFICE_MANAGER = "SUB OFFICE MANAGER FIU"

@@ -1,0 +1,56 @@
+import os
+import sys
+import json
+from src.query_queue.query_queue_connection import QueryQueueConnection
+from src.document_save.document_save_service import DocumentSaveService
+from src.email.dto.report_delivery_dto import ReportDeliveryDTO
+from src.email.dto.recipient_dto import RecipientDTO
+from src.email.query_report_delivered import query_report_delivered
+from src.admin.query_log.query_log_service import QueryLogService
+from config import Queue
+import pika
+ROOT_PATH = os.path.dirname(os.path.realpath(__file__))
+os.environ.update({'ROOT_PATH': ROOT_PATH})
+sys.path.append(os.path.join(ROOT_PATH, 'src'))
+
+from src.queries.query_service import QueryService
+
+if __name__ == '__main__':
+    connection = QueryQueueConnection()
+    channel = connection.channel
+
+    def callback(ch, method, properties, body):
+        print(f" [x] Received {body}")
+        query = json.loads(body)
+        try:
+            query_dto = QueryService().to_execute_query_dto(query=query)
+            results = QueryService().execute_query_from_rabbitmq(query=query_dto)
+            save_path = DocumentSaveService().save_to_csv(results=results, query=query_dto)
+            download_path = DocumentSaveService().get_download_path(save_path=save_path)
+            data = ReportDeliveryDTO(first_name=query_dto.first_name, query_name=query_dto.name, link=download_path)
+            email_recipient = RecipientDTO(email_address=query_dto.email, data=data)
+            query_report_confirmation = query_report_delivered()
+            query_report_confirmation.send(recipients=[email_recipient])
+            QueryLogService().update_query_log(log_id=query["query_log_id"], status='SUCCESS')
+            cleanup_message = json.dumps({'save_path': save_path})
+            channel.basic_publish(
+                exchange=Queue.NIB_QUEUE_EXCHANGE,
+                routing_key=Queue.QUERY_REPORT_CLEANUP_QUEUE,
+                body=cleanup_message,
+                properties=pika.BasicProperties(headers={'x-delay': Queue.DELAY_RATE})
+            )
+        except Exception as e:
+            print(e)
+        
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+        
+        
+    channel.basic_qos(prefetch_count=100)
+    channel.exchange_declare(exchange=Queue.NIB_QUEUE_EXCHANGE, exchange_type=Queue.type, durable=True)
+    channel.queue_declare(queue=Queue.QUERY_REPORT_QUEUE, durable=True)
+    channel.basic_consume(
+        queue=Queue.QUERY_REPORT_QUEUE,
+        on_message_callback=callback,
+    )
+    print(' [*] Waiting for messages. To exit press CTRL+C')
+    channel.start_consuming()

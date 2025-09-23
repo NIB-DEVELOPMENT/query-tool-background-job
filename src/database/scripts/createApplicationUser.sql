@@ -1,0 +1,1 @@
+CREATE USER {{db_schema}} IDENTIFIED BY Welcome1
