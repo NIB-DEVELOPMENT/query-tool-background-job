@@ -46,7 +46,7 @@ if __name__ == '__main__':
         
         
     channel.basic_qos(prefetch_count=100)
-    channel.exchange_declare(exchange=Queue.NIB_QUEUE_EXCHANGE, exchange_type='direct', durable=True)
+    channel.exchange_declare(exchange=Queue.NIB_QUEUE_EXCHANGE, exchange_type=Queue.type, durable=True)
     channel.queue_declare(queue=Queue.QUERY_REPORT_QUEUE, durable=True)
     channel.basic_consume(
         queue=Queue.QUERY_REPORT_QUEUE,
