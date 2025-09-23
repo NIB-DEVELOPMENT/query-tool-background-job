@@ -48,14 +48,14 @@ class QueryLogRepo:
             if attr == "inserted_date":
                 date_range: DateRangeDTO = value
                 if date_range.start:
-                    query = query.filter(
+                    query_log = query_log.filter(
                         getattr(QueryLogTable, attr) >= date_range.start
                     )
                 if date_range.end:
-                    query = query.filter(getattr(QueryLogTable, attr) <= date_range.end)
+                    query_log = query_log.filter(getattr(QueryLogTable, attr) <= date_range.end)
                 continue
 
-        query_logs = query.order_by(QueryLogTable.inserted_date.asc())
+        query_logs = query_log.order_by(QueryLogTable.inserted_date.asc())
         query_dtos = self.to_query_log_dtos(query_logs)
         return query_dtos, query_logs.total
 
