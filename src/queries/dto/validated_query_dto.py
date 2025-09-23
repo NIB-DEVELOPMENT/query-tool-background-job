@@ -8,4 +8,4 @@ class ValidatedQueryDTO:
     query_name: str
     query_upload: FileStorage
     department: str
-    id
+    id: int
