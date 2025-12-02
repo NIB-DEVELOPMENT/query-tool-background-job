@@ -30,6 +30,11 @@ class FilenameService:
     MAX_PARAMS_LEN = 70  # Calculated dynamically
     FILE_EXTENSION = ".csv"
 
+    # Truncation allocation ratios
+    QUERY_NAME_ALLOCATION_RATIO = 0.4  # 40% of space for query name
+    PARAMS_ALLOCATION_RATIO = 0.6      # 60% for params (more important for uniqueness)
+    WORD_BOUNDARY_THRESHOLD = 0.7       # Try to break at word boundary if within 70% of limit
+
     @classmethod
     def generate_filename(
         cls,
@@ -125,8 +130,8 @@ class FilenameService:
         # Remove invalid characters
         sanitized = cls.INVALID_CHARS_PATTERN.sub('', query_name)
 
-        # Convert spaces to dashes
-        sanitized = sanitized.replace(' ', '-')
+        # Convert spaces and underscores to dashes for consistency
+        sanitized = sanitized.replace(' ', '-').replace('_', '-')
 
         # Collapse multiple dashes
         sanitized = re.sub(r'-+', '-', sanitized)
@@ -174,6 +179,8 @@ class FilenameService:
         """
         Abbreviate common parameter key names for brevity.
 
+        For unknown keys, uses first 6 chars + 2-char hash to ensure uniqueness.
+
         Args:
             key: Parameter key name
 
@@ -183,6 +190,8 @@ class FilenameService:
         Example:
             >>> FilenameService._abbreviate_key("department")
             'dept'
+            >>> FilenameService._abbreviate_key("parametername1")
+            'parame5f'  # 6 chars + 2-char hash
         """
         abbreviations = {
             "department": "dept",
@@ -205,7 +214,17 @@ class FilenameService:
         }
 
         lower_key = key.lower()
-        return abbreviations.get(lower_key, key[:8])  # Max 8 chars if not abbreviated
+        if lower_key in abbreviations:
+            return abbreviations[lower_key]
+
+        # For unknown keys, use first 6 chars + 2-char hash for uniqueness
+        if len(key) <= 8:
+            return key[:8]
+        else:
+            # Hash the full key and take first 2 hex digits
+            import hashlib
+            key_hash = hashlib.md5(key.encode()).hexdigest()[:2]
+            return f"{key[:6]}{key_hash}"
 
     @classmethod
     def _sanitize_param_value(cls, value) -> str:
@@ -277,8 +296,8 @@ class FilenameService:
             return f"{timestamp}-{user_id}-{truncated_query}{cls.FILE_EXTENSION}"
 
         # Split remaining space between query name and params
-        # Give 40% to query name, 60% to params (params are more important for uniqueness)
-        query_allocation = int(remaining * 0.4)
+        # Allocation ratios defined as class constants
+        query_allocation = int(remaining * cls.QUERY_NAME_ALLOCATION_RATIO)
         params_allocation = remaining - query_allocation - 1  # -1 for dash
 
         # Truncate query name
@@ -286,7 +305,7 @@ class FilenameService:
             truncated_query = query_name[:query_allocation]
             # Try to end at a word boundary
             last_dash = truncated_query.rfind('-')
-            if last_dash > query_allocation * 0.7:  # If we're within 30% of the end
+            if last_dash > query_allocation * cls.WORD_BOUNDARY_THRESHOLD:
                 truncated_query = truncated_query[:last_dash]
         else:
             truncated_query = query_name

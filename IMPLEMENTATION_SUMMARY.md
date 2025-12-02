@@ -168,6 +168,7 @@ When a query runs, Sentry tracks:
 - **Traces sample rate**: 100% (all transactions tracked)
 - **Environment tag**: "development"
 - **Best for**: Local testing, debugging
+- **Note**: This is the default when `APP_ENV` is not set. The system automatically falls back to development configuration if the environment variable is missing or contains an invalid value (see [config.py](config.py:100))
 
 ### Staging
 - **Traces sample rate**: 50% (half of transactions tracked)
