@@ -17,3 +17,5 @@ class QueryException(Enum):
     QUERY_NAME_NOT_SENT = "The query_name key was not sent"
     QUERY_UPLOAD_NOT_SENT = "The query_upload key was not sent"
     QUERY_FILE_NOT_PRESENT = "Query file not present"
+    INVALID_DATE_PARAMETER = "Invalid date parameter '{param}': Expected YYYYMMDD format (8 digits), got '{value}'"
+    INVALID_PARAMETER_TYPE = "Invalid parameter type '{param}': Expected {expected_type}, got '{value}'"

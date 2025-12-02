@@ -12,6 +12,7 @@ from werkzeug.datastructures import FileStorage
 from src.database.SQLReader import SQLReader
 from src.queries.dto.execute_query_dto import ExecuteQueryDTO
 from src.nib_user.nib_user_service import NIBUserService
+from src.queries.validators.parameter_validator import ParameterValidator
 
 
 class QueryService:
@@ -19,6 +20,7 @@ class QueryService:
     base_path = FileRepo.path
     sql_reader = SQLReader()
     nib_user_service = NIBUserService()
+    parameter_validator = ParameterValidator()
 
     def _allowed_extensions(self, query_upload: FileStorage) -> bool:
         extensions = {".sql"}
@@ -178,6 +180,10 @@ class QueryService:
     def execute_query_from_rabbitmq(self, query: ExecuteQueryDTO) -> list:
         if not os.path.isfile(query.file_path):
             raise BadRequest(QueryException.QUERY_FILE_NOT_AVAILABLE.value)
+
+        # Validate query parameters before execution
+        self.parameter_validator.validate_parameters(query.query_params)
+
         valid_query = self.sql_reader.getSQL(scriptPath=query.file_path)
         return self.query_repo.execute_query(query=valid_query, execute_dto=query)
     
