@@ -240,6 +240,9 @@ if __name__ == '__main__':
                 # Always acknowledge the message
                 ch.basic_ack(delivery_tag=method.delivery_tag)
 
+                # Heartbeat after every processed message (success or failure)
+                SentryService.send_heartbeat()
+
                 # Clear Sentry context for next message
                 SentryService.clear_context()
         
@@ -252,4 +255,11 @@ if __name__ == '__main__':
         on_message_callback=callback,
     )
     print(' [*] Waiting for messages. To exit press CTRL+C')
-    channel.start_consuming()
+
+    # Idle heartbeat loop: process_data_events blocks for up to 300s (5 min),
+    # then returns so we can send a heartbeat proving the consumer is alive.
+    # Replaces channel.start_consuming() which blocks forever with no
+    # opportunity to signal liveness during idle periods.
+    while True:
+        connection.connection.process_data_events(time_limit=300)
+        SentryService.send_heartbeat()

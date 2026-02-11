@@ -1,8 +1,20 @@
 import sentry_sdk
 from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
+from sentry_sdk.crons import capture_checkin
+from sentry_sdk.crons.consts import MonitorStatus
 import logging
+import socket
 from typing import Optional, Dict, Any
+
+MONITOR_SLUG = "bg-job-consumer-heartbeat"
+MONITOR_CONFIG = {
+    "schedule": {"type": "interval", "value": 5, "unit": "minute"},
+    "checkin_margin": 2,
+    "max_runtime": 10,
+    "failure_issue_threshold": 1,
+    "recovery_threshold": 1,
+}
 
 
 class SentryService:
@@ -47,6 +59,10 @@ class SentryService:
         )
 
         cls._initialized = True
+
+        # Tag all events with replica hostname for multi-replica identification
+        sentry_sdk.set_tag("replica", socket.gethostname())
+
         print(f" [*] Sentry initialized for environment: {config_class.get_environment()}")
 
     @classmethod
@@ -169,6 +185,24 @@ class SentryService:
             Span object (use as context manager)
         """
         return sentry_sdk.start_span(op=op, description=description)
+
+    @classmethod
+    def send_heartbeat(cls, status=MonitorStatus.OK):
+        """
+        Send a cron monitor heartbeat to Sentry.
+
+        Called after each processed message and during idle periods to prove
+        consumer liveness. If Sentry misses a heartbeat for >10 minutes,
+        it fires a P1 "Consumer Down" alert.
+
+        Args:
+            status: MonitorStatus.OK for healthy, MonitorStatus.ERROR for failure
+        """
+        capture_checkin(
+            monitor_slug=MONITOR_SLUG,
+            status=status,
+            monitor_config=MONITOR_CONFIG,
+        )
 
     @classmethod
     def clear_context(cls):
