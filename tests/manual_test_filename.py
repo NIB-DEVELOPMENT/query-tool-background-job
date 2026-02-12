@@ -130,6 +130,20 @@ def test_various_scenarios():
     print(f"   Length: {len(filename)}")
     print()
 
+    # Scenario 9: Query name with underscores (converted to dashes)
+    print("9. Query name with underscores (converted to dashes):")
+    filename = FilenameService.generate_filename(
+        user_id=31688,
+        query_name="Employee_Status_Report",  # Will become Employee-Status-Report
+        query_params={"type": "monthly"}
+    )
+    print(f"   {filename}")
+    print(f"   Extracted components:")
+    components = FilenameService.extract_components(filename)
+    for key, value in components.items():
+        print(f"     {key}: {value}")
+    print()
+
     print("=" * 80)
     print("All tests completed!")
     print("=" * 80)

@@ -10,7 +10,10 @@ from src.admin.query_log.query_log_service import QueryLogService
 from config import Queue, AppConfig
 import pika
 from src.monitoring.sentry_service import SentryService
-import traceback
+import logging
+
+logger = logging.getLogger(__name__)
+
 ROOT_PATH = os.path.dirname(os.path.realpath(__file__))
 os.environ.update({'ROOT_PATH': ROOT_PATH})
 sys.path.append(os.path.join(ROOT_PATH, 'src'))
@@ -39,10 +42,11 @@ if __name__ == '__main__':
                 data={"body_size": len(body)}
             )
 
-            print(f" [x] Received {body}")
+            logger.info(f" [x] Received {body}")
 
             query = None
             query_dto = None
+            row_count = 0  # Initialize to avoid NameError in exception handler
 
             try:
                 # Parse message
@@ -199,12 +203,10 @@ if __name__ == '__main__':
 
             except Exception as e:
                 # Set transaction status
-                if transaction:
-                    transaction.set_status("internal_error")
+                transaction.set_status("internal_error")
 
                 # Log error with full traceback
-                print(f"ERROR processing message: {e}")
-                print(traceback.format_exc())
+                logger.error(f"ERROR processing message: {e}", exc_info=True)
 
                 # Add error breadcrumb
                 SentryService.add_breadcrumb(

@@ -85,13 +85,20 @@ class TestSentryIntegration(unittest.TestCase):
 
     @patch('src.monitoring.sentry_service.sentry_sdk')
     def test_capture_exception(self, mock_sentry):
-        """Test exception capture"""
+        """Test exception capture with tags"""
         test_exception = ValueError("Test error")
+
+        # Create a mock scope context manager
+        mock_scope = MagicMock()
+        mock_sentry.push_scope.return_value.__enter__.return_value = mock_scope
 
         SentryService.capture_exception(
             exception=test_exception,
             tags={"test_tag": "test_value"}
         )
+
+        # Verify tags were set
+        mock_scope.set_tag.assert_called_once_with("test_tag", "test_value")
 
         # Verify capture_exception was called
         mock_sentry.capture_exception.assert_called_once_with(test_exception)
