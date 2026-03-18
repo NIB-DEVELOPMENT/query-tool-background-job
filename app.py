@@ -19,6 +19,7 @@ os.environ.update({'ROOT_PATH': ROOT_PATH})
 sys.path.append(os.path.join(ROOT_PATH, 'src'))
 
 from src.queries.query_service import QueryService
+from src import Session
 
 # Initialize Sentry with environment-specific configuration
 sentry_config = AppConfig.get_sentry_config()
@@ -202,6 +203,12 @@ if __name__ == '__main__':
                 transaction.set_status("ok")
 
             except Exception as e:
+                # Rollback the DB session to clear any poisoned transaction state.
+                try:
+                    Session.rollback()
+                except Exception:
+                    pass
+
                 # Set transaction status
                 transaction.set_status("internal_error")
 
@@ -242,6 +249,13 @@ if __name__ == '__main__':
                 # Always acknowledge the message
                 ch.basic_ack(delivery_tag=method.delivery_tag)
 
+                # Clean up scoped session — return connection to pool.
+                # Without this, a single DB error poisons the session permanently.
+                try:
+                    Session.remove()
+                except Exception:
+                    pass
+
                 # Heartbeat after every processed message (success or failure)
                 SentryService.send_heartbeat()
 
@@ -249,7 +263,7 @@ if __name__ == '__main__':
                 SentryService.clear_context()
         
         
-    channel.basic_qos(prefetch_count=100)
+    channel.basic_qos(prefetch_count=5)
     channel.exchange_declare(exchange=Queue.NIB_QUEUE_EXCHANGE, exchange_type=Queue.type, durable=True)
     channel.queue_declare(queue=Queue.QUERY_REPORT_QUEUE, durable=True)
     channel.basic_consume(

@@ -18,6 +18,5 @@ engine = sa.create_engine(
     }
 )
 base.metadata.bind = engine
-session= orm.scoped_session(orm.sessionmaker(bind=engine))
-session.configure(bind=engine)
-Session=session()
+session_factory = orm.sessionmaker(bind=engine)
+Session = orm.scoped_session(session_factory)
