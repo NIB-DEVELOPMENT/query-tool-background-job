@@ -67,6 +67,15 @@ class QueryLogRepo:
         self.db.commit()
         return self.to_query_log_dto(query_log)
 
+    def update_status(self, log_id: int, status: str, row_count: int = None):
+        query_log = self.db.query(QueryLogTable).filter_by(id=log_id).first()
+        if query_log:
+            query_log.status = status
+            if row_count is not None:
+                query_log.row_count = row_count
+            self.db.commit()
+        return query_log
+
     def to_query_log_dto(self, query_log: QueryLogTable) -> QueryLogDTO:
         return QueryLogDTO(
             id=query_log.id,

@@ -103,6 +103,13 @@ if __name__ == '__main__':
                         }
                     )
 
+                # Update status: EXECUTING
+                if query and "query_log_id" in query:
+                    try:
+                        QueryLogService().update_status(log_id=query["query_log_id"], status="EXECUTING")
+                    except Exception:
+                        pass
+
                 # Execute query
                 with SentryService.start_span(
                     op="db.query",
@@ -121,6 +128,15 @@ if __name__ == '__main__':
                         level="info",
                         data={"row_count": row_count}
                     )
+
+                # Update status: SAVING (with row count)
+                if query and "query_log_id" in query:
+                    try:
+                        QueryLogService().update_status(
+                            log_id=query["query_log_id"], status="SAVING", row_count=row_count
+                        )
+                    except Exception:
+                        pass
 
                 # Save to CSV
                 with SentryService.start_span(
@@ -172,9 +188,10 @@ if __name__ == '__main__':
                     op="db.update",
                     description="Update query log status"
                 ):
-                    QueryLogService().update_query_log(
+                    QueryLogService().update_status(
                         log_id=query["query_log_id"],
-                        status='SUCCESS'
+                        status='COMPLETE',
+                        row_count=row_count
                     )
 
                 # Publish cleanup message
