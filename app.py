@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import signal
 from src.query_queue.query_queue_connection import QueryQueueConnection
 from src.document_save.document_save_service import DocumentSaveService
 from src.email.dto.report_delivery_dto import ReportDeliveryDTO
@@ -28,6 +29,14 @@ SentryService.initialize(sentry_config)
 if __name__ == '__main__':
     connection = QueryQueueConnection()
     channel = connection.channel
+
+    def graceful_shutdown(signum, frame):
+        logger.info("Received signal %s, shutting down gracefully...", signum)
+        connection.close()
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, graceful_shutdown)
+    signal.signal(signal.SIGINT, graceful_shutdown)
 
     def callback(ch, method, properties, body):
         # Start transaction for entire message processing
