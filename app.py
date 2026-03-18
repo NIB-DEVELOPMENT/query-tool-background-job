@@ -231,6 +231,62 @@ if __name__ == '__main__':
                         level="info"
                     )
 
+                # Self-reschedule if this was a scheduled report
+                if query and query.get("scheduled") and query.get("schedule_id"):
+                    try:
+                        from datetime import datetime, timedelta
+
+                        schedule_id = query["schedule_id"]
+                        # Check last_run_at to prevent duplicate re-publishing
+                        from sqlalchemy import text
+                        result = Session.execute(
+                            text("SELECT last_run_at, frequency, day_of_week, day_of_month, run_time, is_active FROM scheduled_report_table WHERE id = :id"),
+                            {"id": schedule_id}
+                        ).fetchone()
+
+                        if result and result[5]:  # is_active
+                            now = datetime.now()
+                            frequency = result[1]
+                            run_time = result[4] or "08:00"
+                            hour, minute = map(int, run_time.split(":"))
+
+                            # Calculate next run
+                            if frequency == "daily":
+                                next_run = (now + timedelta(days=1)).replace(hour=hour, minute=minute, second=0)
+                            elif frequency == "weekly":
+                                next_run = (now + timedelta(days=7)).replace(hour=hour, minute=minute, second=0)
+                            elif frequency == "monthly":
+                                if now.month == 12:
+                                    next_run = now.replace(year=now.year + 1, month=1, day=min(result[3] or 1, 28), hour=hour, minute=minute, second=0)
+                                else:
+                                    next_run = now.replace(month=now.month + 1, day=min(result[3] or 1, 28), hour=hour, minute=minute, second=0)
+                            else:
+                                next_run = now + timedelta(days=1)
+
+                            delay_ms = max(int((next_run - now).total_seconds() * 1000), 1000)
+
+                            # Update DB
+                            Session.execute(
+                                text("UPDATE scheduled_report_table SET last_run_at = :now, next_run_at = :next WHERE id = :id"),
+                                {"now": now, "next": next_run, "id": schedule_id}
+                            )
+                            Session.commit()
+
+                            # Re-publish with delay
+                            channel.basic_publish(
+                                exchange=Queue.NIB_QUEUE_EXCHANGE,
+                                routing_key=Queue.QUERY_REPORT_QUEUE,
+                                body=json.dumps(query),
+                                properties=pika.BasicProperties(
+                                    delivery_mode=pika.DeliveryMode.Persistent,
+                                    headers={"x-delay": delay_ms},
+                                ),
+                            )
+                            logger.info("Rescheduled report: schedule_id=%d, next=%s, delay=%dms",
+                                        schedule_id, next_run, delay_ms)
+                    except Exception as sched_err:
+                        logger.error("Failed to reschedule report: %s", sched_err)
+
                 # Send success event to Sentry
                 SentryService.capture_message(
                     message=f"Query '{query_dto.name}' completed successfully",
