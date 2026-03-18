@@ -171,29 +171,33 @@ if __name__ == '__main__':
                 # Generate download link
                 download_path = DocumentSaveService().get_download_path(save_path=save_path)
 
-                # Send email
-                with SentryService.start_span(
-                    op="email.send",
-                    description="Send report delivery email"
-                ):
-                    data = ReportDeliveryDTO(
-                        first_name=query_dto.first_name,
-                        query_name=query_dto.name,
-                        link=download_path
-                    )
-                    email_recipient = RecipientDTO(
-                        email_address=query_dto.email,
-                        data=data
-                    )
-                    query_report_confirmation = query_report_delivered()
-                    query_report_confirmation.send(recipients=[email_recipient])
+                # Send email (skip if notify_email is false)
+                notify_email = query.get("notify_email", True) if query else True
+                if notify_email:
+                    with SentryService.start_span(
+                        op="email.send",
+                        description="Send report delivery email"
+                    ):
+                        data = ReportDeliveryDTO(
+                            first_name=query_dto.first_name,
+                            query_name=query_dto.name,
+                            link=download_path
+                        )
+                        email_recipient = RecipientDTO(
+                            email_address=query_dto.email,
+                            data=data
+                        )
+                        query_report_confirmation = query_report_delivered()
+                        query_report_confirmation.send(recipients=[email_recipient])
 
-                    SentryService.add_breadcrumb(
-                        message="Email sent successfully",
-                        category="email",
-                        level="info",
-                        data={"recipient": query_dto.email}
-                    )
+                        SentryService.add_breadcrumb(
+                            message="Email sent successfully",
+                            category="email",
+                            level="info",
+                            data={"recipient": query_dto.email}
+                        )
+                else:
+                    logger.info("Email notification skipped (notify_email=false)")
 
                 # Update query log
                 with SentryService.start_span(
