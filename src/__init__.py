@@ -12,10 +12,6 @@ engine = sa.create_engine(
     pool_size=3,
     max_overflow=2,
     echo=True,
-    connect_args={
-        "tcp_connect_timeout": 10,
-        "call_timeout": 300,
-    }
 )
 base.metadata.bind = engine
 session_factory = orm.sessionmaker(bind=engine)
