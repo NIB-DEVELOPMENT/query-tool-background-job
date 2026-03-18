@@ -4,6 +4,8 @@ import json
 import signal
 from src.query_queue.query_queue_connection import QueryQueueConnection
 from src.document_save.document_save_service import DocumentSaveService
+from src.document_save.excel_export_service import ExcelExportService
+from src.document_save.pdf_export_service import PdfExportService
 from src.email.dto.report_delivery_dto import ReportDeliveryDTO
 from src.email.dto.recipient_dto import RecipientDTO
 from src.email.query_report_delivered import query_report_delivered
@@ -138,22 +140,32 @@ if __name__ == '__main__':
                     except Exception:
                         pass
 
-                # Save to CSV
+                # Save results in requested format (csv, xlsx, pdf)
+                export_format = query.get("export_format", "csv") if query else "csv"
                 with SentryService.start_span(
                     op="file.write",
-                    description="Save results to CSV"
+                    description=f"Save results to {export_format}"
                 ) as span:
-                    save_path = DocumentSaveService().save_to_csv(
-                        results=results,
-                        query=query_dto
-                    )
+                    if export_format == "xlsx":
+                        save_path = ExcelExportService().save_to_xlsx(
+                            results=results, query=query_dto
+                        )
+                    elif export_format == "pdf":
+                        save_path = PdfExportService().save_to_pdf(
+                            results=results, query=query_dto
+                        )
+                    else:
+                        save_path = DocumentSaveService().save_to_csv(
+                            results=results, query=query_dto
+                        )
                     span.set_data("file_path", save_path)
+                    span.set_data("export_format", export_format)
 
                     SentryService.add_breadcrumb(
-                        message="Results saved to CSV",
+                        message=f"Results saved to {export_format}",
                         category="file_io",
                         level="info",
-                        data={"save_path": save_path}
+                        data={"save_path": save_path, "format": export_format}
                     )
 
                 # Generate download link
