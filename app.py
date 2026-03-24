@@ -207,7 +207,8 @@ if __name__ == '__main__':
                     QueryLogService().update_status(
                         log_id=query["query_log_id"],
                         status='COMPLETE',
-                        row_count=row_count
+                        row_count=row_count,
+                        file_path=save_path.lstrip('/'),
                     )
 
                 # Publish cleanup message
