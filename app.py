@@ -288,14 +288,14 @@ if __name__ == '__main__':
                     except Exception as sched_err:
                         logger.error("Failed to reschedule report: %s", sched_err)
 
-                # Send success event to Sentry
-                SentryService.capture_message(
-                    message=f"Query '{query_dto.name}' completed successfully",
-                    level="info",
-                    tags={
-                        "query_id": str(query_dto.query_id),
-                        "user_id": str(query_dto.user_id),
-                        "row_count": str(row_count)
+                # Log query completion (breadcrumb-only — no Sentry event)
+                logger.info(
+                    "Query '%s' completed successfully",
+                    query_dto.name,
+                    extra={
+                        "query_id": query_dto.query_id,
+                        "user_id": query_dto.user_id,
+                        "row_count": row_count,
                     }
                 )
 

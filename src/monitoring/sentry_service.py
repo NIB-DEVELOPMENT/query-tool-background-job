@@ -7,6 +7,8 @@ import logging
 import socket
 from typing import Optional, Dict, Any
 
+logger = logging.getLogger(__name__)
+
 MONITOR_SLUG = "bg-job-consumer-heartbeat"
 MONITOR_CONFIG = {
     "schedule": {"type": "interval", "value": 5, "unit": "minute"},
@@ -15,6 +17,14 @@ MONITOR_CONFIG = {
     "failure_issue_threshold": 1,
     "recovery_threshold": 1,
 }
+
+
+def _before_send_handler(event, hint):
+    """Drop info-level events — they belong in logs, not Sentry issues."""
+    if event.get('level') == 'info':
+        logger.debug("Dropped info-level Sentry event: %s", event.get('message', 'N/A'))
+        return None
+    return event
 
 
 class SentryService:
@@ -52,6 +62,7 @@ class SentryService:
             profiles_sample_rate=config_class.profiles_sample_rate,
             send_default_pii=config_class.send_default_pii,
             enable_tracing=config_class.enable_tracing,
+            before_send=_before_send_handler,
             integrations=[
                 logging_integration,
                 sqlalchemy_integration,
