@@ -41,6 +41,10 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, graceful_shutdown)
 
     def callback(ch, method, properties, body):
+        # Per-message session boundary — ensure each message starts with a clean session
+        Session.remove()
+        logger.debug("Session scope reset for message %s", method.delivery_tag)
+
         # Start transaction for entire message processing
         with SentryService.start_transaction(
             name="process_query_message",
@@ -109,8 +113,8 @@ if __name__ == '__main__':
                 if query and "query_log_id" in query:
                     try:
                         QueryLogService().update_status(log_id=query["query_log_id"], status="EXECUTING")
-                    except Exception:
-                        pass
+                    except Exception as status_err:
+                        logger.warning("Failed to update status to EXECUTING: %s", status_err)
 
                 # Execute query
                 with SentryService.start_span(
@@ -137,8 +141,8 @@ if __name__ == '__main__':
                         QueryLogService().update_status(
                             log_id=query["query_log_id"], status="SAVING", row_count=row_count
                         )
-                    except Exception:
-                        pass
+                    except Exception as status_err:
+                        logger.warning("Failed to update status to SAVING: %s", status_err)
 
                 # Save results in requested format (csv, xlsx, pdf)
                 export_format = query.get("export_format", "csv") if query else "csv"
@@ -305,8 +309,16 @@ if __name__ == '__main__':
                 # Rollback the DB session to clear any poisoned transaction state.
                 try:
                     Session.rollback()
-                except Exception:
-                    pass
+                except Exception as rollback_err:
+                    logger.error(
+                        "Session rollback failed for query %s, forcing session removal: %s",
+                        query_dto.query_id if query_dto else "unknown",
+                        rollback_err, exc_info=True
+                    )
+                    try:
+                        Session.remove()
+                    except Exception as remove_err:
+                        logger.error("Session.remove() also failed: %s", remove_err, exc_info=True)
 
                 # Set transaction status
                 transaction.set_status("internal_error")
@@ -336,12 +348,16 @@ if __name__ == '__main__':
                 # Update query log to FAILED if we have the log_id
                 if query and "query_log_id" in query:
                     try:
+                        Session.remove()  # Force fresh session for status update
                         QueryLogService().update_query_log(
                             log_id=query["query_log_id"],
                             status='FAILED'
                         )
                     except Exception as log_error:
-                        print(f"Failed to update query log: {log_error}")
+                        logger.error(
+                            "Failed to update query log %s to FAILED status: %s",
+                            query.get("query_log_id"), log_error, exc_info=True
+                        )
                         SentryService.capture_exception(log_error)
 
             finally:
@@ -352,8 +368,8 @@ if __name__ == '__main__':
                 # Without this, a single DB error poisons the session permanently.
                 try:
                     Session.remove()
-                except Exception:
-                    pass
+                except Exception as cleanup_err:
+                    logger.warning("Session cleanup failed in finally block: %s", cleanup_err)
 
                 # Heartbeat after every processed message (success or failure)
                 SentryService.send_heartbeat()
