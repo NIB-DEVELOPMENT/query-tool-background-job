@@ -110,6 +110,16 @@ class QueryRepo:
         return query_role_dtos
 
     def execute_query(self, query: str, execute_dto: ExecuteQueryDTO) -> list:
+            # Apply Oracle server-side timeout if specified (hard-kills runaway queries)
+            if execute_dto.timeout_seconds:
+                try:
+                    raw_conn = self.db.connection().connection
+                    dbapi_conn = raw_conn.dbapi_connection if hasattr(raw_conn, "dbapi_connection") else raw_conn
+                    if hasattr(dbapi_conn, "call_timeout"):
+                        dbapi_conn.call_timeout = execute_dto.timeout_seconds * 1000  # ms
+                except Exception:
+                    pass  # Timeout not critical — continue without it
+
             results: CursorResult = self.db.execute(
                 text(query), execute_dto.query_params
             )

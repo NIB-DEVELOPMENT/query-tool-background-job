@@ -160,6 +160,9 @@ class QueryService:
             query_params=query["query_params"],
             email=query["email_address"],
             department=query["department"],
+            timeout_seconds=query.get("timeout_seconds"),
+            row_cap=query.get("row_cap"),
+            tier=query.get("tier"),
         )
         return execute_query_dto
 
@@ -185,5 +188,10 @@ class QueryService:
         self.parameter_validator.validate_parameters(query.query_params)
 
         valid_query = self.sql_reader.getSQL(scriptPath=query.file_path)
+
+        # Apply tier-based row cap (wraps SQL with ROWNUM limit)
+        if query.row_cap:
+            valid_query = f"SELECT * FROM ({valid_query}) WHERE ROWNUM <= {query.row_cap}"
+
         return self.query_repo.execute_query(query=valid_query, execute_dto=query)
     
