@@ -38,7 +38,7 @@ class QueryLogService:
             query_id=log_id, status=status
         )
 
-    def update_status(self, log_id: int, status: str, row_count: int = None):
+    def update_status(self, log_id: int, status: str, row_count: int = None, file_path: str = None):
         return self.query_log_repo.update_status(
-            log_id=log_id, status=status, row_count=row_count
+            log_id=log_id, status=status, row_count=row_count, file_path=file_path
         )
