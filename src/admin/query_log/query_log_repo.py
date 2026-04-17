@@ -68,9 +68,11 @@ class QueryLogRepo:
         return self.to_query_log_dto(query_log)
 
     def update_status(self, log_id: int, status: str, row_count: int = None, file_path: str = None):
+        from datetime import datetime
         query_log = self.db.query(QueryLogTable).filter_by(id=log_id).first()
         if query_log:
             query_log.status = status
+            query_log.updated_date = datetime.now()  # Explicit — autoload skips BaseModel's onupdate
             if row_count is not None:
                 query_log.row_count = row_count
             if file_path is not None:
