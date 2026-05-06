@@ -1,54 +1,94 @@
-from typing import Dict, List, Any, Optional
+import json
+import logging
+import os
+from typing import Any, Dict, List, Optional
+
+from werkzeug.exceptions import BadRequest
+
 from src.queries.validators.base_validator import BaseParameterValidator
 from src.queries.validators.date_validator import DateParameterValidator
+
+
+# ─── Mode handling (TC-01) ────────────────────────────────────────────────────
+#
+# Mirrors backend's parameter_validator.py. The bg-job uses logger-only output
+# in all modes (no DB write target) because by the time a message reaches the
+# bg-job, the backend's validator has already run — bg-job validator firing in
+# shadow mode is a rare event and gets surfaced via Sentry/logs.
+#
+# See nib-query-tool-backend/src/queries/validators/parameter_validator.py for
+# the full mode semantics.
+
+logger = logging.getLogger(__name__)
+
+VALID_MODES = {"off", "shadow", "enforce"}
+_MODE_ENV = "PARAMETER_VALIDATOR_MODE"
+
+
+def _resolve_mode() -> str:
+    raw = os.environ.get(_MODE_ENV, "off").strip().lower()
+    if raw not in VALID_MODES:
+        logger.warning(
+            "%s=%r is not in %s; falling back to 'off'", _MODE_ENV, raw, sorted(VALID_MODES)
+        )
+        return "off"
+    return raw
+
+
+def _log_shadow_rejection(param_name: str, param_value: Any, error: BadRequest) -> None:
+    logger.info(
+        "validator_shadow_decision",
+        extra={
+            "source": "parameter_validator",
+            "subsystem": "background-job",
+            "action": "would_reject",
+            "details": json.dumps({
+                "param_name": param_name,
+                "param_value": str(param_value)[:200],
+                "rule_violated": str(error.description)[:300],
+            }),
+            "mode": "shadow",
+        },
+    )
 
 
 class ParameterValidator:
     """
     Main validator that orchestrates parameter validation.
-    Delegates to specific validators based on parameter names.
+    Mode-gated per PARAMETER_VALIDATOR_MODE — mirrors backend behavior.
     """
 
     def __init__(self):
-        # Register all validators
         self.validators: List[BaseParameterValidator] = [
             DateParameterValidator(),
-            # Future validators can be added here:
-            # IntegerParameterValidator(),
-            # EmailParameterValidator(),
+            # Future validators added here; keep parity with backend.
         ]
 
     def validate_parameters(self, query_params: Optional[Dict[str, Any]]) -> None:
         """
         Validate all query parameters.
 
-        Args:
-            query_params: Dictionary of parameter names to values
-
         Raises:
-            BadRequest: If any parameter fails validation
-
-        Example:
-            >>> validator = ParameterValidator()
-            >>> validator.validate_parameters({'start_date': '20240101'})  # Valid
-            >>> validator.validate_parameters({'end_date': '202010h'})  # Raises BadRequest
+            BadRequest: when mode is "enforce" and a parameter fails validation.
         """
         if not query_params:
             return
 
+        mode = _resolve_mode()
+        if mode == "off":
+            return
+
         for param_name, param_value in query_params.items():
-            self._validate_parameter(param_name, param_value)
+            self._validate_parameter(param_name, param_value, mode)
 
-    def _validate_parameter(self, param_name: str, param_value: Any) -> None:
-        """
-        Validate a single parameter by finding appropriate validator.
-
-        Args:
-            param_name: Name of the parameter
-            param_value: Value to validate
-        """
+    def _validate_parameter(self, param_name: str, param_value: Any, mode: str) -> None:
         for validator in self.validators:
             if validator.matches(param_name):
-                validator.validate(param_name, param_value)
-                # Only use first matching validator
+                try:
+                    validator.validate(param_name, param_value)
+                except BadRequest as err:
+                    if mode == "shadow":
+                        _log_shadow_rejection(param_name, param_value, err)
+                        return
+                    raise
                 break
