@@ -109,6 +109,27 @@ if __name__ == '__main__':
                         }
                     )
 
+                # Scheduled runs are published in advance with no pre-created
+                # log (only the backend's async path pre-creates one), so create
+                # it here at run time and inject the id so the downstream guarded
+                # updates (EXECUTING/SAVING/COMPLETE) all work unchanged. Wrapped
+                # so a log-write failure never blocks report generation.
+                if query is not None and "query_log_id" not in query:
+                    try:
+                        _qlog_service = QueryLogService()
+                        _log_dto = _qlog_service.to_create_query_log_dto(
+                            log_data=QueryService().get_query_by_id(query_id=query_dto.query_id),
+                            user_id=query_dto.user_id,
+                        )
+                        _created_log = _qlog_service.create_query_log(query_log_dto=_log_dto)
+                        query["query_log_id"] = _created_log.id
+                        logger.info(
+                            "Created run-time query log %s for scheduled query %s",
+                            _created_log.id, query_dto.query_id,
+                        )
+                    except Exception as log_create_err:
+                        logger.warning("Could not create run-time query log: %s", log_create_err)
+
                 # Update status: EXECUTING
                 if query and "query_log_id" in query:
                     try:
@@ -208,12 +229,13 @@ if __name__ == '__main__':
                     op="db.update",
                     description="Update query log status"
                 ):
-                    QueryLogService().update_status(
-                        log_id=query["query_log_id"],
-                        status='COMPLETE',
-                        row_count=row_count,
-                        file_path=save_path.lstrip('/'),
-                    )
+                    if query and "query_log_id" in query:
+                        QueryLogService().update_status(
+                            log_id=query["query_log_id"],
+                            status='COMPLETE',
+                            row_count=row_count,
+                            file_path=save_path.lstrip('/'),
+                        )
 
                 # Publish cleanup message
                 with SentryService.start_span(
@@ -277,11 +299,14 @@ if __name__ == '__main__':
                             )
                             Session.commit()
 
-                            # Re-publish with delay
+                            # Re-publish with delay. Strip the run-time-injected
+                            # query_log_id so the NEXT occurrence creates its own
+                            # fresh log instead of mutating this run's log row.
+                            republish_body = {k: v for k, v in query.items() if k != "query_log_id"}
                             channel.basic_publish(
                                 exchange=Queue.NIB_QUEUE_EXCHANGE,
                                 routing_key=Queue.QUERY_REPORT_QUEUE,
-                                body=json.dumps(query),
+                                body=json.dumps(republish_body),
                                 properties=pika.BasicProperties(
                                     delivery_mode=pika.DeliveryMode.Persistent,
                                     headers={"x-delay": delay_ms},
