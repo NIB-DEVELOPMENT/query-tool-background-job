@@ -44,6 +44,21 @@ class PdfExportService:
             "NIBSubtitle", parent=styles["Normal"],
             textColor=colors.gray, fontSize=10, spaceAfter=6,
         )
+        # Data-table cells MUST be Paragraphs, not plain strings: ReportLab does
+        # not wrap plain-string cells, so long values overflow the (often narrow)
+        # column and overlap the neighbouring cell. Paragraphs wrap within the
+        # column width and grow the row height instead. wordWrap="CJK" forces a
+        # break inside long unbroken tokens (e.g. a 50-char no-space value in a
+        # 26pt column) so nothing can spill past the cell edge.
+        cell_style = ParagraphStyle(
+            "NIBCell", parent=styles["Normal"],
+            fontName="Helvetica", fontSize=6, leading=7, wordWrap="CJK",
+        )
+        header_cell_style = ParagraphStyle(
+            "NIBHeaderCell", parent=styles["Normal"],
+            fontName="Helvetica-Bold", fontSize=7, leading=8,
+            textColor=colors.white, wordWrap="CJK",
+        )
 
         elements = []
 
@@ -88,8 +103,15 @@ class PdfExportService:
         # Data table (first 500 rows)
         if results and results.rows:
             truncated = results.rows[:PDF_MAX_ROWS]
-            table_data = [results.column_names] + [
-                [self._format_value(v) for v in row] for row in truncated
+            # Wrap every cell (header + body) in a Paragraph so text wraps within
+            # the column instead of overflowing/overlapping (see cell_style note).
+            header_row = [
+                Paragraph(self._escape(str(c)), header_cell_style)
+                for c in results.column_names
+            ]
+            table_data = [header_row] + [
+                [Paragraph(self._escape(self._format_value(v)), cell_style) for v in row]
+                for row in truncated
             ]
 
             # Calculate column widths based on content
@@ -100,11 +122,10 @@ class PdfExportService:
             data_table = Table(table_data, colWidths=[col_width] * num_cols, repeatRows=1)
             data_table.setStyle(TableStyle([
                 ("BACKGROUND", (0, 0), (-1, 0), NIB_BLUE),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, 0), 7),
-                ("FONTSIZE", (0, 1), (-1, -1), 6),
+                # Fonts/colour for cell text now come from the Paragraph styles;
+                # TableStyle keeps background, grid, alignment and padding.
                 ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E5E7EB")),
                 ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F9FAFB")]),
                 ("TOPPADDING", (0, 0), (-1, -1), 2),
@@ -143,3 +164,11 @@ class PdfExportService:
         if isinstance(value, (date, datetime)):
             return value.strftime("%Y-%m-%d")
         return str(value)[:50]  # Truncate long strings for table cells
+
+    @staticmethod
+    def _escape(text: str) -> str:
+        # Paragraph parses XML-ish markup, so &, <, > in data must be escaped
+        # or they corrupt the cell (or raise). Values like "A & B" or "<null>"
+        # would otherwise break rendering.
+        from xml.sax.saxutils import escape
+        return escape(text)
