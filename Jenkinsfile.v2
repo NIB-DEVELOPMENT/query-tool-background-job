@@ -1,0 +1,59 @@
+// V2 dual-stack pipeline (design §5, DS-05).
+// Jenkins job: pipeline-from-SCM, branch release/v2, script path Jenkinsfile.v2.
+// Builds/pushes the v2 image and deploys ONLY the v2 compose project —
+// the v1 stack and its prod-tagged images are never touched here.
+// NOTE: this deploy stage moves IMAGES only. The deploy-query-tool-v2/ compose
+// files reach the host exclusively via OPS-2 step 0 (scp; host has no git creds).
+
+def remote = [:]
+remote.name = 'devadmin'
+remote.host = '172.16.1.156'
+remote.allowAnyHosts = true
+
+pipeline {
+    agent any
+    environment {
+        DEV_CREDS = credentials('devadmin')
+        DOCKER_CREDS = credentials('DockerHub')
+    }
+    stages {
+        stage('Build Background Job v2 Image'){
+            steps {
+                sh 'docker build -t nibitdev/query-tool-background-job:v2 .'
+            }
+        }
+        stage('Login to DockerHub'){
+            steps {
+                sh 'echo $DOCKER_CREDS_PSW | docker login -u $DOCKER_CREDS_USR --password-stdin'
+            }
+        }
+        stage('Push Background Job v2 Image'){
+            steps {
+                sh 'docker push nibitdev/query-tool-background-job:v2'
+            }
+        }
+        stage('Deploy background-job-v2 (service-scoped)'){
+            steps {
+                script {
+                    remote.user = env.DEV_CREDS_USR
+                    remote.password = env.DEV_CREDS_PSW
+                }
+                // pull BEFORE up (the v1 bg-job pipeline lacked it — deploys
+                // silently reused the stale image), and always name the single
+                // service — a bare `up -d` would restart the whole v2 project
+                // including rabbitmq-v2 (redelivery risk). up -d recreates
+                // both replicas of this service.
+                sshCommand (remote: remote, command: """
+                    cd ~/deploy-query-tool/deploy-query-tool-v2
+                    echo '${env.DEV_CREDS_PSW}' | sudo -S docker compose pull background-job-v2
+                    echo '${env.DEV_CREDS_PSW}' | sudo -S docker compose up -d background-job-v2
+                    """)
+            }
+        }
+    }
+    post {
+        always {
+            sh 'docker logout'
+        }
+    }
+}
