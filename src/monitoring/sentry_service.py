@@ -35,6 +35,19 @@ class SentryService:
 
     _initialized = False
 
+    @staticmethod
+    def resolve_environment(config_class):
+        """Environment contract: the mounted config.py may set SENTRY_ENVIRONMENT
+        on the config class (preferred; the v2 stack mounts "production-v2") or
+        provide the legacy get_environment(); with neither, default to "production"."""
+        environment = getattr(config_class, "SENTRY_ENVIRONMENT", None)
+        if environment:
+            return environment
+        get_environment = getattr(config_class, "get_environment", None)
+        if callable(get_environment):
+            return get_environment()
+        return "production"
+
     @classmethod
     def initialize(cls, config_class):
         """
@@ -45,6 +58,8 @@ class SentryService:
         """
         if cls._initialized:
             return
+
+        environment = cls.resolve_environment(config_class)
 
         # Configure logging integration
         logging_integration = LoggingIntegration(
@@ -57,7 +72,7 @@ class SentryService:
 
         sentry_sdk.init(
             dsn=config_class.dsn,
-            environment=config_class.get_environment(),
+            environment=environment,
             traces_sample_rate=config_class.traces_sample_rate,
             profiles_sample_rate=config_class.profiles_sample_rate,
             send_default_pii=config_class.send_default_pii,
@@ -74,7 +89,7 @@ class SentryService:
         # Tag all events with replica hostname for multi-replica identification
         sentry_sdk.set_tag("replica", socket.gethostname())
 
-        print(f" [*] Sentry initialized for environment: {config_class.get_environment()}")
+        print(f" [*] Sentry initialized for environment: {environment}")
 
     @classmethod
     def set_user_context(cls, user_id: int, email: Optional[str] = None,
