@@ -13,6 +13,7 @@ from src.database.SQLReader import SQLReader
 from src.queries.dto.execute_query_dto import ExecuteQueryDTO
 from src.nib_user.nib_user_service import NIBUserService
 from src.queries.validators.parameter_validator import ParameterValidator
+from src.query_bounds import worker_limits
 
 
 class QueryService:
@@ -189,9 +190,17 @@ class QueryService:
 
         valid_query = self.sql_reader.getSQL(scriptPath=query.file_path)
 
-        # Apply tier-based row cap (wraps SQL with ROWNUM limit)
+        # Apply tier-based row cap (wraps SQL with ROWNUM limit — silent
+        # truncation is the tier design). Messages WITHOUT a tier cap get the
+        # worker's backstop cap instead (DS-07), enforced during fetch
+        # streaming as a hard failure rather than truncation.
         if query.row_cap:
             valid_query = f"SELECT * FROM ({valid_query}) WHERE ROWNUM <= {query.row_cap}"
+            row_cap_backstop = None
+        else:
+            row_cap_backstop = worker_limits()[1]
 
-        return self.query_repo.execute_query(query=valid_query, execute_dto=query)
+        return self.query_repo.execute_query(
+            query=valid_query, execute_dto=query, row_cap_backstop=row_cap_backstop
+        )
     

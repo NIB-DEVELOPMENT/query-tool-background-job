@@ -130,6 +130,34 @@ if __name__ == '__main__':
                     except Exception as log_create_err:
                         logger.warning("Could not create run-time query log: %s", log_create_err)
 
+                # DS-07 redelivery guard: a redelivered message whose log row
+                # already reached a terminal state was finished (or failed) by
+                # a previous worker — ack (via finally) and skip, so restart
+                # races can never double-process or loop.
+                if method.redelivered and query and "query_log_id" in query:
+                    try:
+                        prior_status = QueryLogService().get_status(log_id=query["query_log_id"])
+                    except Exception as guard_err:
+                        # Guard is a backstop — on lookup failure, process normally.
+                        logger.warning("Redelivery guard status lookup failed: %s", guard_err)
+                        prior_status = None
+                    if prior_status in ("FAILED", "COMPLETE"):
+                        SentryService.add_breadcrumb(
+                            message="Redelivered message skipped — log row already terminal",
+                            category="rabbitmq",
+                            level="warning",
+                            data={
+                                "query_log_id": query["query_log_id"],
+                                "prior_status": prior_status,
+                            },
+                        )
+                        logger.warning(
+                            "Skipping redelivered message: query_log_id=%s already %s",
+                            query["query_log_id"], prior_status,
+                        )
+                        transaction.set_status("ok")
+                        return  # finally block acks
+
                 # Update status: EXECUTING
                 if query and "query_log_id" in query:
                     try:

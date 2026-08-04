@@ -42,3 +42,6 @@ class QueryLogService:
         return self.query_log_repo.update_status(
             log_id=log_id, status=status, row_count=row_count, file_path=file_path
         )
+
+    def get_status(self, log_id: int):
+        return self.query_log_repo.get_status(log_id=log_id)
