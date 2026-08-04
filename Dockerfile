@@ -1,4 +1,7 @@
-FROM python:3.11
+# Pinned to the exact version the running prod image was built with (2025-12):
+# the floating :3.11 tag drifted to a base without pkg_resources, breaking
+# sdist builds in requirements.txt (found 2026-08-04).
+FROM python:3.11.13
 
 WORKDIR /app
 
