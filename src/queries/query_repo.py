@@ -6,8 +6,10 @@ from src.queries.dto.query_result_dto import QueryResultDTO
 from src.queries.dto.execute_query_dto import ExecuteQueryDTO
 from sqlalchemy.sql import text
 from sqlalchemy.engine.cursor import CursorResult
+from sqlalchemy.exc import SQLAlchemyError
 from typing import List
 from src import Session, engine
+from src.query_bounds import QueryBoundsExceeded, is_call_timeout_error, worker_limits
 
 @dataclass
 class QueryRepo:
@@ -75,8 +77,26 @@ class QueryRepo:
             params_name = comment.rsplit(",")
         return params_name
 
-    def to_query_result_dto(self, results: CursorResult) -> QueryResultDTO:
-        rows = results._fetchall_impl()
+    def to_query_result_dto(
+        self, results: CursorResult, row_cap: int = None, query_id: int = None
+    ) -> QueryResultDTO:
+        if row_cap:
+            # DS-07 backstop: stream the fetch and fail fast past the cap
+            # instead of materializing an unbounded list (256M container).
+            # Tier-capped queries are already ROWNUM-limited upstream and
+            # never reach this branch.
+            rows = []
+            while True:
+                chunk = results.fetchmany(10_000)
+                if not chunk:
+                    break
+                rows.extend(chunk)
+                if len(rows) > row_cap:
+                    raise QueryBoundsExceeded(
+                        kind="row_cap", limit=row_cap, query_id=query_id
+                    )
+        else:
+            rows = results._fetchall_impl()
         query_result: QueryResultDTO = QueryResultDTO(
             column_names=list(results.keys()._keys),
             rows=rows,
@@ -109,8 +129,12 @@ class QueryRepo:
             )
         return query_role_dtos
 
-    def execute_query(self, query: str, execute_dto: ExecuteQueryDTO) -> list:
-            # Apply Oracle server-side timeout if specified (hard-kills runaway queries)
+    def execute_query(
+        self, query: str, execute_dto: ExecuteQueryDTO, row_cap_backstop: int = None
+    ) -> list:
+            # Apply Oracle server-side timeout if specified (hard-kills runaway
+            # queries). Overrides the engine-level default set by the connect
+            # event in src/__init__.py; without a tier value the default stands.
             if execute_dto.timeout_seconds:
                 try:
                     raw_conn = self.db.connection().connection
@@ -120,7 +144,22 @@ class QueryRepo:
                 except Exception:
                     pass  # Timeout not critical — continue without it
 
-            results: CursorResult = self.db.execute(
-                text(query), execute_dto.query_params
-            )
-            return self.to_query_result_dto(results=results)
+            try:
+                results: CursorResult = self.db.execute(
+                    text(query), execute_dto.query_params
+                )
+                return self.to_query_result_dto(
+                    results=results, row_cap=row_cap_backstop,
+                    query_id=execute_dto.query_id,
+                )
+            except SQLAlchemyError as err:
+                # DS-07: surface a call-timeout kill as a controlled bounds
+                # failure so the callback marks the row FAILED and acks —
+                # never a redelivery loop.
+                if is_call_timeout_error(err):
+                    raise QueryBoundsExceeded(
+                        kind="timeout",
+                        limit=execute_dto.timeout_seconds or worker_limits()[0],
+                        query_id=execute_dto.query_id,
+                    ) from err
+                raise

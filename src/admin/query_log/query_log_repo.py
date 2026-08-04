@@ -59,6 +59,14 @@ class QueryLogRepo:
         query_dtos = self.to_query_log_dtos(query_logs)
         return query_dtos, query_logs.total
 
+    def get_status(self, log_id: int):
+        """Current status of a log row, or None if the row doesn't exist.
+        Read-only — used by the DS-07 redelivery guard."""
+        row = (
+            self.db.query(QueryLogTable.status).filter_by(id=log_id).first()
+        )
+        return row[0] if row else None
+
     def update_query_log(
         self, query_id: int, status: str
     ) -> QueryLogDTO:
