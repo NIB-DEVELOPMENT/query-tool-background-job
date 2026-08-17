@@ -7,6 +7,7 @@ from src.email.dto.report_delivery_dto import ReportDeliveryDTO
 from src.email.dto.recipient_dto import RecipientDTO
 from src.email.query_report_delivered import query_report_delivered
 from src.admin.query_log.query_log_service import QueryLogService
+from src import Session
 from config import Queue, AppConfig
 import pika
 from src.monitoring.sentry_service import SentryService
@@ -47,6 +48,27 @@ if __name__ == '__main__':
             query = None
             query_dto = None
             row_count = 0  # Initialize to avoid NameError in exception handler
+
+            # PER-MESSAGE SESSION BOUNDARY. Every message starts on a clean
+            # session, whatever the previous one did to it.
+            #
+            # `Session` is a scoped_session shared by the whole worker, so when
+            # Oracle drops a connection mid-query (DPY-4011) it is left holding
+            # an invalidated connection. Rolling back in the error handler is not
+            # enough on its own: rollback() on an invalidated connection can
+            # itself raise, and then the session stays poisoned for the life of
+            # the process. The worker keeps consuming messages and every one
+            # dies with PendingRollbackError before it can even mark the row
+            # FAILED, so reports sit at PENDING forever with no error and no
+            # email -- while the container still reports healthy and the queue
+            # still reads empty.
+            #
+            # Incident 68444: one DPY-4011 on worker-8 at 2026-08-11 15:03:48
+            # silently killed every job it touched for six days. 2 of 8 workers
+            # were dead this way, so ~25% of all reports vanished, and it
+            # surfaced only when a user complained.
+            Session.remove()
+            logger.debug("Session scope reset for new message")
 
             try:
                 # Parse message
@@ -202,6 +224,23 @@ if __name__ == '__main__':
                 transaction.set_status("ok")
 
             except Exception as e:
+                # Clear any poisoned transaction state before anything else.
+                # Rollback first; if that fails, DISCARD the session outright.
+                # Never swallow this -- a silent failure here is what turns one
+                # dropped connection into a permanently dead worker.
+                try:
+                    Session.rollback()
+                except Exception as rollback_err:
+                    logger.error("Session.rollback() failed: %s", rollback_err,
+                                 exc_info=True)
+                    SentryService.capture_exception(rollback_err)
+                    try:
+                        Session.remove()
+                    except Exception as remove_err:
+                        logger.error("Session.remove() also failed: %s",
+                                     remove_err, exc_info=True)
+                        SentryService.capture_exception(remove_err)
+
                 # Set transaction status
                 transaction.set_status("internal_error")
 
@@ -230,15 +269,34 @@ if __name__ == '__main__':
                 # Update query log to FAILED if we have the log_id
                 if query and "query_log_id" in query:
                     try:
+                        # Force a fresh session for the status write. The
+                        # original may still be unusable, and this write is the
+                        # ONLY thing that tells the user their report failed --
+                        # if it is skipped the row stays PENDING and the failure
+                        # is invisible, which is exactly what happened to the
+                        # nine reports in incident 68444.
+                        Session.remove()
                         QueryLogService().update_query_log(
                             log_id=query["query_log_id"],
                             status='FAILED'
                         )
                     except Exception as log_error:
-                        print(f"Failed to update query log: {log_error}")
+                        logger.error("Failed to update query log: %s",
+                                     log_error, exc_info=True)
                         SentryService.capture_exception(log_error)
 
             finally:
+                # Release the session before the next message. Belt-and-braces
+                # with the reset at entry. Guarded, because a cleanup failure
+                # must never skip the ack below: an unacked message redelivers
+                # forever (the 156-restart poison loop of 2026-07-13).
+                try:
+                    Session.remove()
+                except Exception as cleanup_err:
+                    logger.error("Session cleanup failed: %s", cleanup_err,
+                                 exc_info=True)
+                    SentryService.capture_exception(cleanup_err)
+
                 # Always acknowledge the message
                 ch.basic_ack(delivery_tag=method.delivery_tag)
 
