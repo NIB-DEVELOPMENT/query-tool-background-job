@@ -20,6 +20,18 @@ class QueryLogService:
         nib_user_dto = self.nib_user_repo.find_by_user_id(user_id=user_id)
         return CreateQueryLogDTO(user=nib_user_dto, query=log_data)
 
+    def create_run_time_query_log(self, query: QueryDTO, nib_user_id: int):
+        """Create the log row for a run that had none pre-created (scheduled
+        runs). Every queue message carries ``user_id`` = ``nib_users.id`` (the
+        PK), NOT the auth-service ``nib_users.user_id`` that
+        ``to_create_query_log_dto`` resolves by -- looking the PK up in the
+        wrong column returned None and the scheduled path crashed on ``.id``
+        (prod v2, 2026-09-07)."""
+        nib_user_dto = self.nib_user_repo.find_by_id(nib_user_id=nib_user_id)
+        if nib_user_dto is None:
+            raise LookupError(f"nib_users.id {nib_user_id!r} not found; cannot create run-time query log")
+        return self.create_query_log(CreateQueryLogDTO(user=nib_user_dto, query=query))
+
     def search_query_logs(self, query_log_search_criteria: QueryLogSearchCriteriaDTO):
         queries, total = self.query_log_repo.filter_query_log(query_log_search_criteria)
         if not queries:

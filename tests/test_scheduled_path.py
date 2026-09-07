@@ -102,3 +102,35 @@ class TestRowCapCoercion(unittest.TestCase):
         self.assertIsNone(self.coerce(0))
         self.assertIsNone(self.coerce(-1))
         self.assertIsNone(self.coerce(True))
+
+
+class TestRunTimeQueryLogResolvesUserByPrimaryKey(unittest.TestCase):
+    """Queue messages carry user_id = nib_users.id (PK). The run-time log must
+    resolve by that column, not by the auth-service user_id column."""
+
+    def _service(self):
+        from src.admin.query_log.query_log_service import QueryLogService
+        svc = QueryLogService.__new__(QueryLogService)
+        svc.query_log_repo = MagicMock(name="QueryLogRepo")
+        svc.nib_user_repo = MagicMock(name="NIBUserRepo")
+        return svc
+
+    def test_looks_up_by_id_not_user_id(self):
+        svc = self._service()
+        svc.create_run_time_query_log(query=MagicMock(name="QueryDTO"), nib_user_id=31688)
+        svc.nib_user_repo.find_by_id.assert_called_once_with(nib_user_id=31688)
+        svc.nib_user_repo.find_by_user_id.assert_not_called()
+        svc.query_log_repo.add_benefit_log.assert_called_once()
+
+    def test_unknown_user_raises_instead_of_none_dot_id(self):
+        svc = self._service()
+        svc.nib_user_repo.find_by_id.return_value = None
+        with self.assertRaises(LookupError):
+            svc.create_run_time_query_log(query=MagicMock(), nib_user_id=-1)
+        svc.query_log_repo.add_benefit_log.assert_not_called()
+
+    def test_app_uses_the_pk_path(self):
+        with open(APP_PY, encoding="utf-8") as f:
+            src = f.read()
+        self.assertIn("create_run_time_query_log(", src)
+        self.assertNotIn("to_create_query_log_dto(", src)
