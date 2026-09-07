@@ -1,3 +1,5 @@
+from typing import Optional
+import logging
 import os
 import pathlib
 from src.queries.query_repo import QueryRepo
@@ -14,6 +16,8 @@ from src.queries.dto.execute_query_dto import ExecuteQueryDTO
 from src.nib_user.nib_user_service import NIBUserService
 from src.queries.validators.parameter_validator import ParameterValidator
 from src.query_bounds import worker_limits
+
+logger = logging.getLogger(__name__)
 
 
 class QueryService:
@@ -194,8 +198,12 @@ class QueryService:
         # truncation is the tier design). Messages WITHOUT a tier cap get the
         # worker's backstop cap instead (DS-07), enforced during fetch
         # streaming as a hard failure rather than truncation.
-        if query.row_cap:
-            valid_query = f"SELECT * FROM ({valid_query}) WHERE ROWNUM <= {query.row_cap}"
+        # ROWNUM cannot be bound in every Oracle context, so the cap is
+        # interpolated -- only ever as a validated positive int, never the raw
+        # value off the queue message. Anything else falls back to the backstop.
+        row_cap = self._coerce_row_cap(query.row_cap)
+        if row_cap:
+            valid_query = f"SELECT * FROM ({valid_query}) WHERE ROWNUM <= {row_cap}"
             row_cap_backstop = None
         else:
             row_cap_backstop = worker_limits()[1]
@@ -203,4 +211,17 @@ class QueryService:
         return self.query_repo.execute_query(
             query=valid_query, execute_dto=query, row_cap_backstop=row_cap_backstop
         )
+
+    @staticmethod
+    def _coerce_row_cap(value) -> Optional[int]:
+        """A tier row cap is a positive int or nothing. bool is rejected because
+        int(True) == 1 would silently cap a report at one row."""
+        if value is None or isinstance(value, bool):
+            return None
+        try:
+            cap = int(value)
+        except (TypeError, ValueError):
+            logger.warning("Ignoring non-integer row_cap on message: %r", value)
+            return None
+        return cap if cap > 0 else None
     
