@@ -55,10 +55,10 @@ class NIBUserRepo(SQLReader):
         return [result["display_name"] for result in results.mappings()]
 
     def _find_by_user_id(self, user_id: int) -> NIBUser:
-        return NIBUser.query.filter(NIBUser.user_id == user_id).first()
+        return self.db.query(NIBUser).filter(NIBUser.user_id == user_id).first()
 
     def _find_by_id(self, nib_user_id) -> NIBUser:
-        return NIBUser.query.filter(NIBUser.id == nib_user_id).first()
+        return self.db.query(NIBUser).filter(NIBUser.id == nib_user_id).first()
 
     def to_nib_user_dto(self, user: NIBUser) -> NIBUserDTO:
         user_dto: NIBUserDTO = None

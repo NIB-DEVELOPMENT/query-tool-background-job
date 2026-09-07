@@ -11,6 +11,15 @@ from src.email.dto.recipient_dto import RecipientDTO
 from src.email.query_report_delivered import query_report_delivered
 from src.admin.query_log.query_log_service import QueryLogService
 from config import Queue, AppConfig
+from config import OracleDB
+
+# The worker connects as a DBA account, not as the schema owner, so raw SQL
+# against query-tool tables MUST be schema-qualified -- the ORM models already
+# are (see __table_args__ schema=OracleDB().userName). Unqualified
+# `scheduled_report_table` raised ORA-00942 on every scheduled run, so the
+# self-reschedule never happened and each schedule fired exactly once
+# (2026-08-20, both v2 workers).
+SCHEDULED_REPORT_TABLE = f"{OracleDB().userName}.scheduled_report_table"
 import pika
 from src.monitoring.sentry_service import SentryService
 import logging
@@ -295,7 +304,7 @@ if __name__ == '__main__':
                         # Check last_run_at to prevent duplicate re-publishing
                         from sqlalchemy import text
                         result = Session.execute(
-                            text("SELECT last_run_at, frequency, day_of_week, day_of_month, run_time, is_active FROM scheduled_report_table WHERE id = :id"),
+                            text(f"SELECT last_run_at, frequency, day_of_week, day_of_month, run_time, is_active FROM {SCHEDULED_REPORT_TABLE} WHERE id = :id"),
                             {"id": schedule_id}
                         ).fetchone()
 
@@ -322,7 +331,7 @@ if __name__ == '__main__':
 
                             # Update DB
                             Session.execute(
-                                text("UPDATE scheduled_report_table SET last_run_at = :now, next_run_at = :next WHERE id = :id"),
+                                text(f"UPDATE {SCHEDULED_REPORT_TABLE} SET last_run_at = :now, next_run_at = :next WHERE id = :id"),
                                 {"now": now, "next": next_run, "id": schedule_id}
                             )
                             Session.commit()
