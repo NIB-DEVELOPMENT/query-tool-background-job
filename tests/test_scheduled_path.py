@@ -134,3 +134,24 @@ class TestRunTimeQueryLogResolvesUserByPrimaryKey(unittest.TestCase):
             src = f.read()
         self.assertIn("create_run_time_query_log(", src)
         self.assertNotIn("to_create_query_log_dto(", src)
+
+
+class TestRunTimeQueryLogAllocatesIdFromSequence(unittest.TestCase):
+    """query_log_table.id has no identity/trigger; the backend feeds it from
+    Sequence('query_log_id_seq'). The worker's model must declare the same
+    sequence or its INSERTs send NULL (ORA-01400)."""
+
+    def test_model_id_column_uses_the_backend_sequence(self):
+        from sqlalchemy import Sequence
+        from src.admin.query_log.query_log_model import QueryLogTable
+        col = QueryLogTable.__table__.c.id
+        self.assertIsInstance(col.default, Sequence)
+        self.assertEqual(col.default.name, "query_log_id_seq")
+        self.assertTrue(col.primary_key)
+
+    def test_failed_run_time_log_rolls_the_session_back(self):
+        with open(APP_PY, encoding="utf-8") as f:
+            src = f.read()
+        i = src.index('logger.warning("Could not create run-time query log: %s", log_create_err)')
+        window = src[i:i + 600]
+        self.assertIn("Session.rollback()", window)
