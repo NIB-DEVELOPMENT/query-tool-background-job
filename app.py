@@ -125,12 +125,10 @@ if __name__ == '__main__':
                 # so a log-write failure never blocks report generation.
                 if query is not None and "query_log_id" not in query:
                     try:
-                        _qlog_service = QueryLogService()
-                        _log_dto = _qlog_service.to_create_query_log_dto(
-                            log_data=QueryService().get_query_by_id(query_id=query_dto.query_id),
-                            user_id=query_dto.user_id,
+                        _created_log = QueryLogService().create_run_time_query_log(
+                            query=QueryService().get_query_by_id(query_id=query_dto.query_id),
+                            nib_user_id=query_dto.user_id,
                         )
-                        _created_log = _qlog_service.create_query_log(query_log_dto=_log_dto)
                         query["query_log_id"] = _created_log.id
                         logger.info(
                             "Created run-time query log %s for scheduled query %s",
