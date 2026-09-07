@@ -67,6 +67,22 @@ except Exception as exc:  # noqa: BLE001
 finally:
     Session.remove()
 
+print("== 3. run-time query_log rows can allocate an id (backend sequence, visible to this account) ==")
+try:
+    from sqlalchemy import Sequence
+    from src.admin.query_log.query_log_model import QueryLogTable
+    col = QueryLogTable.__table__.c.id
+    check("QueryLogTable.id default is Sequence(query_log_id_seq)",
+          isinstance(col.default, Sequence) and col.default.name == "query_log_id_seq")
+    row = Session.execute(text(
+        "select count(*) from all_sequences where sequence_name = 'QUERY_LOG_ID_SEQ' "
+        "and sequence_owner = upper(:o)"), {"o": OracleDB().userName}).scalar()
+    check("sequence exists and is visible to this account", row == 1, f"(matches={row})")
+except Exception as exc:  # noqa: BLE001
+    check("query_log id allocation", False, str(exc).splitlines()[0])
+finally:
+    Session.remove()
+
 print()
 if failures:
     print(f"RESULT: FAIL -- {failures}")

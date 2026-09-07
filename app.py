@@ -136,6 +136,15 @@ if __name__ == '__main__':
                         )
                     except Exception as log_create_err:
                         logger.warning("Could not create run-time query log: %s", log_create_err)
+                        # A failed flush leaves the session unusable until rolled
+                        # back; without this the report itself then died with
+                        # "transaction has been rolled back due to a previous
+                        # exception during flush" (2026-09-07).
+                        try:
+                            Session.rollback()
+                        except Exception as rb_err:  # noqa: BLE001
+                            logger.error("Rollback after failed run-time log failed: %s", rb_err)
+                            Session.remove()
 
                 # DS-07 redelivery guard: a redelivered message whose log row
                 # already reached a terminal state was finished (or failed) by
