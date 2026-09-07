@@ -77,3 +77,28 @@ class TestRescheduleSqlIsSchemaQualified(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestRowCapCoercion(unittest.TestCase):
+    """row_cap comes off the queue message and is interpolated into SQL (ROWNUM
+    cannot always be bound), so it must be a validated positive int or nothing."""
+
+    def setUp(self):
+        from src.queries.query_service import QueryService
+        self.coerce = QueryService._coerce_row_cap
+
+    def test_accepts_positive_ints_and_numeric_strings(self):
+        self.assertEqual(self.coerce(5000), 5000)
+        self.assertEqual(self.coerce("250"), 250)
+
+    def test_rejects_sql_fragments_and_garbage(self):
+        self.assertIsNone(self.coerce("1 OR 1=1"))
+        self.assertIsNone(self.coerce("5000; DROP TABLE x"))
+        self.assertIsNone(self.coerce("abc"))
+        self.assertIsNone(self.coerce(object()))
+
+    def test_rejects_non_positive_none_and_bool(self):
+        self.assertIsNone(self.coerce(None))
+        self.assertIsNone(self.coerce(0))
+        self.assertIsNone(self.coerce(-1))
+        self.assertIsNone(self.coerce(True))
