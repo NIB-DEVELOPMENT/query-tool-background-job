@@ -68,8 +68,10 @@ class TestRescheduleSqlIsSchemaQualified(unittest.TestCase):
             'SCHEDULED_REPORT_TABLE = f"{OracleDB().userName}.scheduled_report_table"',
             self.source,
         )
-        self.assertEqual(self.source.count("{SCHEDULED_REPORT_TABLE}"), 2,
-                         "both the SELECT and the UPDATE must use the constant")
+        for stmt in ("SELECT last_run_at, frequency, day_of_week, day_of_month, run_time, is_active FROM {SCHEDULED_REPORT_TABLE}",
+                     "UPDATE {SCHEDULED_REPORT_TABLE} SET last_run_at",
+                     "SELECT is_active, next_run_at FROM {SCHEDULED_REPORT_TABLE}"):
+            self.assertIn(stmt, self.source, f"statement must use the qualified constant: {stmt}")
 
     def test_reschedule_failure_is_logged_not_swallowed(self):
         self.assertIn('logger.error("Failed to reschedule report: %s", sched_err)', self.source)
@@ -155,3 +157,35 @@ class TestRunTimeQueryLogAllocatesIdFromSequence(unittest.TestCase):
         i = src.index('logger.warning("Could not create run-time query log: %s", log_create_err)')
         window = src[i:i + 600]
         self.assertIn("Session.rollback()", window)
+
+
+class TestLocalClock(unittest.TestCase):
+    """Scheduling decisions must use Nassau wall time (what SYSDATE and users
+    use), not the container's UTC. Naive, so it binds to DATE columns."""
+
+    def test_now_local_is_naive_nassau_time(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from src.clock import now_local, local_timezone
+        self.assertEqual(local_timezone(), "America/Nassau")
+        got = now_local()
+        self.assertIsNone(got.tzinfo)
+        expect = datetime.now(ZoneInfo("America/Nassau")).replace(tzinfo=None)
+        self.assertLess(abs((expect - got).total_seconds()), 5)
+
+    def test_reschedule_no_longer_uses_datetime_now(self):
+        with open(APP_PY, encoding="utf-8") as f:
+            src = f.read()
+        i = src.index("# Self-reschedule if this was a scheduled report")
+        window = src[i:i + 4000]
+        self.assertNotIn("datetime.now()", window)
+        self.assertIn("now = now_local()", window)
+        self.assertIn('republish_body["scheduled_for"]', window)
+
+    def test_stale_or_inactive_scheduled_messages_are_skipped_before_running(self):
+        with open(APP_PY, encoding="utf-8") as f:
+            src = f.read()
+        guard = src.index("Skipping stale scheduled message")
+        run_time_log = src.index("create_run_time_query_log(")
+        self.assertLess(guard, run_time_log, "the guard must run before any work is done")
+        self.assertIn(f"FROM {{SCHEDULED_REPORT_TABLE}} WHERE id = :id", src[guard - 800:guard])
