@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from sqlalchemy import text
 from src.admin.query_log.query_log_model import QueryLogTable
 from src.queries.query_model import QueryTable
 from src.admin.query_log.dto.create_query_log_dto import CreateQueryLogDTO
@@ -21,6 +22,11 @@ class QueryLogRepo:
             user_name=query_log_dto.user.user_name,
             status=query_log_dto.status,
             inserted_by=query_log_dto.user.user_name,
+            # The reflected model carries no defaults; the backend's BaseModel
+            # stamps these from SYSDATE, so do the same here or run-time rows
+            # land with NULL timestamps (rows 4002/4011, 2026-09-07/08).
+            inserted_date=text("SYSDATE"),
+            updated_date=text("SYSDATE"),
         )
         self.db.add(query_log)
         self.db.commit()

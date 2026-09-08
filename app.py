@@ -131,7 +131,9 @@ if __name__ == '__main__':
                     ).fetchone()
                     _expected = query.get("scheduled_for")
                     _actual = _row[1].strftime("%Y-%m-%d %H:%M") if _row and _row[1] else None
-                    if _row is None or not _row[0] or (_expected and _actual and _expected != _actual):
+                    # scheduled_for is mandatory: a message without it predates the
+                    # contract and cannot be matched to the row, so it is stale.
+                    if _row is None or not _row[0] or not _expected or _expected != _actual:
                         logger.warning(
                             "Skipping stale scheduled message: schedule_id=%s active=%s scheduled_for=%s next_run_at=%s",
                             query["schedule_id"], _row[0] if _row else None, _expected, _actual,

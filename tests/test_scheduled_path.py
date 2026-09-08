@@ -189,3 +189,17 @@ class TestLocalClock(unittest.TestCase):
         run_time_log = src.index("create_run_time_query_log(")
         self.assertLess(guard, run_time_log, "the guard must run before any work is done")
         self.assertIn(f"FROM {{SCHEDULED_REPORT_TABLE}} WHERE id = :id", src[guard - 800:guard])
+
+
+class TestRunTimeLogTimestamps(unittest.TestCase):
+    def test_add_benefit_log_stamps_inserted_and_updated_from_sysdate(self):
+        from src.admin.query_log.query_log_repo import QueryLogRepo
+        import inspect
+        src = inspect.getsource(QueryLogRepo.add_benefit_log)
+        self.assertIn('inserted_date=text("SYSDATE")', src)
+        self.assertIn('updated_date=text("SYSDATE")', src)
+
+    def test_guard_requires_scheduled_for(self):
+        with open(APP_PY, encoding="utf-8") as f:
+            src = f.read()
+        self.assertIn("not _expected or _expected != _actual", src)
