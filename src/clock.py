@@ -20,7 +20,10 @@ def local_timezone() -> str:
     except ImportError:
         return DEFAULT_TIMEZONE
     app_cfg = getattr(_config, "AppConfig", None)
-    return getattr(app_cfg, "TIMEZONE", None) or DEFAULT_TIMEZONE
+    tz = getattr(app_cfg, "TIMEZONE", None)
+    # Only a real zone name counts; anything else (missing, empty, a test
+    # double) falls back to the default rather than blowing up ZoneInfo.
+    return tz if isinstance(tz, str) and tz.strip() else DEFAULT_TIMEZONE
 
 
 def now_local() -> datetime:
