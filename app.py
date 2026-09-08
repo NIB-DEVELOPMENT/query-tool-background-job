@@ -118,6 +118,27 @@ if __name__ == '__main__':
                         }
                     )
 
+                # A scheduled message is a delayed copy of the schedule as it was
+                # when published. If the schedule has since been disabled, or
+                # edited/re-armed (next_run_at no longer matches the fire time
+                # baked into this message), this copy is stale: ack and skip, or
+                # an edit would run the report twice and a disable not at all.
+                if query and query.get("scheduled") and query.get("schedule_id"):
+                    from sqlalchemy import text as _text
+                    _row = Session.execute(
+                        _text(f"SELECT is_active, next_run_at FROM {SCHEDULED_REPORT_TABLE} WHERE id = :id"),
+                        {"id": query["schedule_id"]},
+                    ).fetchone()
+                    _expected = query.get("scheduled_for")
+                    _actual = _row[1].strftime("%Y-%m-%d %H:%M") if _row and _row[1] else None
+                    if _row is None or not _row[0] or (_expected and _actual and _expected != _actual):
+                        logger.warning(
+                            "Skipping stale scheduled message: schedule_id=%s active=%s scheduled_for=%s next_run_at=%s",
+                            query["schedule_id"], _row[0] if _row else None, _expected, _actual,
+                        )
+                        transaction.set_status("ok")
+                        return  # finally block acks
+
                 # Scheduled runs are published in advance with no pre-created
                 # log (only the backend's async path pre-creates one), so create
                 # it here at run time and inject the id so the downstream guarded
@@ -305,7 +326,8 @@ if __name__ == '__main__':
                 # Self-reschedule if this was a scheduled report
                 if query and query.get("scheduled") and query.get("schedule_id"):
                     try:
-                        from datetime import datetime, timedelta
+                        from datetime import timedelta
+                        from src.clock import now_local
 
                         schedule_id = query["schedule_id"]
                         # Check last_run_at to prevent duplicate re-publishing
@@ -316,7 +338,7 @@ if __name__ == '__main__':
                         ).fetchone()
 
                         if result and result[5]:  # is_active
-                            now = datetime.now()
+                            now = now_local()
                             frequency = result[1]
                             run_time = result[4] or "08:00"
                             hour, minute = map(int, run_time.split(":"))
@@ -347,6 +369,7 @@ if __name__ == '__main__':
                             # query_log_id so the NEXT occurrence creates its own
                             # fresh log instead of mutating this run's log row.
                             republish_body = {k: v for k, v in query.items() if k != "query_log_id"}
+                            republish_body["scheduled_for"] = next_run.strftime("%Y-%m-%d %H:%M")
                             channel.basic_publish(
                                 exchange=Queue.NIB_QUEUE_EXCHANGE,
                                 routing_key=Queue.QUERY_REPORT_QUEUE,
